@@ -154,6 +154,9 @@ onMounted(() => {
 
     } );
   }
+  if (xrSessionIsGranted) {
+    console.log(xrSessionIsGranted);
+  }
 
   controls = new OrbitControls(camera, canvasRef.value);
   controls.enableDamping = true;
