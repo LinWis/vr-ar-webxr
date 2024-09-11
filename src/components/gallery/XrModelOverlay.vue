@@ -33,7 +33,7 @@ let xrSessionIsGranted = false;
 let shownModel: THREE.Object3D;
 let loadedModel: THREE.Object3D;
 let modelIsPlaced = false;
-let modelIsGrubbing = false;
+// let modelIsGrubbing = false;
 
 let reticle: THREE.Mesh | undefined;
 
@@ -252,9 +252,11 @@ async function initHitTestSources() {
 
 }
 
-async function startXR() {
-  // https://github.com/mrdoob/three.js/blob/master/examples/webxr_xr_ballshooter.html
-}
+// async function startXR() {
+//   // https://github.com/mrdoob/three.js/blob/master/examples/webxr_xr_ballshooter.html
+// }
+
+
 
 async function startVR() {
   if (!navigator.xr) return;
@@ -407,8 +409,7 @@ function onSelectStartRight(event: any) {
 
 }
 
-function onSelectEndtRight( event: any ) {
-
+function onSelectEndtRight(  ) {
   // const controller = event.target;
 
   // if ( controller.userData.selected !== undefined ) {
