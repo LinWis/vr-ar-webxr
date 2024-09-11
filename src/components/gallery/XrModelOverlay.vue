@@ -190,8 +190,6 @@ async function startXr(sessionType: "ar" | "vr") {
   const isVrSupported = await navigator.xr.isSessionSupported( 'immersive-vr' );
   const isArSupported = await navigator.xr.isSessionSupported( 'immersive-ar' )
 
-  console.log(isArSupported, isVrSupported, xrSessionIsGranted)
-
   if (!isArSupported && !isVrSupported) return;
 
   sessionType === "ar" ? startAR() : startVR()
@@ -260,9 +258,6 @@ async function initHitTestSources() {
 
 async function startVR() {
   if (!navigator.xr) return;
-  // https://immersive-web.github.io/
-
-
   // https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/requestSession#session_features
 
   // features
@@ -337,10 +332,19 @@ async function initVRControls() {
   
   controller1 = renderer.xr.getController( 0 );
   scene.add( controller1 );
+
+  controller1.addEventListener("selectstart", onSelectStartRight);
+  controller1.addEventListener("selectend", onSelectEndtRight);
   
 
   controller2 = renderer.xr.getController( 1 );
   scene.add( controller2 );
+
+  // for (let controller of [controller1, controller2]) {
+  //   controller.addEventListener("selectstart", () => {
+
+  //   })
+  // }
 
   const controllerModelFactory = new XRControllerModelFactory();
   const handModelFactory = new XRHandModelFactory();
@@ -370,8 +374,8 @@ async function initVRControls() {
 
   // pinchstart Event break the THREE.EventDispatcher contract, replacing the target to the wrong instance.
 
-  hand2.addEventListener( 'selectstart', onSelectStartRight );
-  hand2.addEventListener( 'selectend', onSelectEndtRight );
+  // hand2.addEventListener( 'selectstart', onSelectStartRight );
+  // hand2.addEventListener( 'selectend', onSelectEndtRight );
   hand2.add( handModelFactory.createHandModel( hand2 ) );
   scene.add( hand2 );
 
@@ -383,13 +387,16 @@ async function initVRControls() {
 
   controller1.add( line.clone() );
   controller2.add( line.clone() );
-
+  
 }
 
-function onSelectStartRight(event: any) {
+function onSelectStartRight(event: THREE.WebXRSpaceEventMap['selectstart']) {
 
-  console.log(event)
-  console.log(typeof event)
+  if (event.data.gamepad) {
+    event.data.gamepad.hapticActuators[0].pulse(0.5, 100);
+  }
+
+  console.log(event.data.gamepad)
 
   // const controller = event.target;
   // const indexTip = controller.joints[ 'index-finger-tip' ];
