@@ -6,7 +6,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
-import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
+// import { RapierPhysics, RapierPhysicsObject } from 'three/addons/physics/RapierPhysics.js';
 import { BoxLineGeometry } from "three/examples/jsm/geometries/BoxLineGeometry.js";
 
 const { width, height, modelName } = defineProps({
@@ -28,6 +28,7 @@ let scene = new THREE.Scene();
 
 let renderer: THREE.WebGLRenderer;
 let controls: OrbitControls;
+// let physics: RapierPhysicsObject | undefined;
 
 let xrSession: XRSession | undefined;
 let xrSessionType: Ref<"ar" | "vr" | undefined> = ref();
@@ -184,6 +185,7 @@ onMounted(() => {
     loadedModel = gltf.scene.children[0];
 
     shownModel = loadedModel.clone();
+    console.log(shownModel);
 
     // for rapier physics
     shownModel.userData.physics = { mass: 1, restitution: 1.1 };
@@ -203,25 +205,26 @@ onUnmounted(() => {
   window.removeEventListener("resize", resizeCallback);
 });
 
-async function initPhysics() {
+// async function initPhysics() {
 
-  // https://rapier.rs/docs/api/javascript/JavaScript3D/
-  // https://rapier.rs/docs/user_guides/javascript/getting_started_js/
+//   // https://rapier.rs/docs/api/javascript/JavaScript3D/
+//   // https://rapier.rs/docs/user_guides/javascript/getting_started_js/
 
-  const physics = await RapierPhysics();
+//   physics = await RapierPhysics();
 
-  // userData.physics = mass, restitution
-  // also can set mesh velocity by physics.setMeshVelocity(mesh, velocity, index?)
+//   // userData.physics = mass, restitution
+//   // also can set mesh velocity by physics.setMeshVelocity(mesh, velocity, index?)
 
-  const floor = new THREE.Mesh( new THREE.BoxGeometry( 6, 2, 6 ), new THREE.MeshNormalMaterial( { visible: false } ) );
-  floor.position.y = - 1;
+//   const floor = new THREE.Mesh( new THREE.BoxGeometry( 6, 2, 6 ), new THREE.MeshNormalMaterial( { visible: false } ) );
+//   floor.position.y = - 1;
 
-  floor.userData.physics = { mass: 0 };
-  scene.add( floor );
+//   floor.userData.physics = { mass: 0 };
+//   scene.add( floor );
+  
 
 
-  physics.addScene( scene );
-}
+//   physics.addScene( scene );
+// }
 
 
 async function startXr(sessionType: "ar" | "vr") {
@@ -523,9 +526,11 @@ function onSelectEndtRight(  ) {
     shownModelIsGrabbed = false;
   }
 
-  // if ( controller.userData.isSelecting ) {
+  // if (physics) {
+  //   physics.setMeshPosition( shownModel as THREE.Mesh, shownModel.position );
+  // }
 
-  //   physics.setMeshPosition( spheres, controller.position, count );
+  // if ( controller.userData.isSelecting ) {
 
   //   velocity.x = ( Math.random() - 0.5 ) * 2;
   //   velocity.y = ( Math.random() - 0.5 ) * 2;
