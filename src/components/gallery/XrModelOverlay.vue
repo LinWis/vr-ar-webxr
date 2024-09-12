@@ -1,11 +1,13 @@
 <script lang="ts" setup>
-import { onMounted, onUnmounted, Ref, ref } from "vue";
+import { onMounted, onUnmounted, Ref, ref, watch } from "vue";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
+import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
+import { BoxLineGeometry } from "three/examples/jsm/geometries/BoxLineGeometry.js";
 
 const { width, height, modelName } = defineProps({
   width: {
@@ -23,16 +25,18 @@ const { width, height, modelName } = defineProps({
 });
 
 let scene = new THREE.Scene();
+
 let renderer: THREE.WebGLRenderer;
 let controls: OrbitControls;
 
 let xrSession: XRSession | undefined;
-let xrSessionType: "ar" | "vr" | undefined;
+let xrSessionType: Ref<"ar" | "vr" | undefined> = ref();
 let xrSessionIsGranted = false;
 
 let shownModel: THREE.Object3D;
 let loadedModel: THREE.Object3D;
 let modelIsPlaced = false;
+let shownModelIsGrabbed = false;
 // let modelIsGrubbing = false;
 
 let reticle: THREE.Mesh | undefined;
@@ -84,7 +88,7 @@ let loop = (_: DOMHighResTimeStamp, frame: XRFrame) => {
 
     // if (!session || !localSpace) return;
 
-    if (xrSessionType === "ar" && hitTestSource && localSpace && xrSession) {
+    if (xrSessionType.value === "ar" && hitTestSource && localSpace && xrSession) {
       const hitTestResults = frame.getHitTestResults(hitTestSource);
 
       if (hitTestResults.length == 0) return;
@@ -100,7 +104,7 @@ let loop = (_: DOMHighResTimeStamp, frame: XRFrame) => {
       }
 
     }
-    else if (xrSessionType === "vr" && xrSession) {
+    else if (xrSessionType.value === "vr" && xrSession) {
       // if ( scaling.active ) {
 
       //   const indexTip1Pos = hand1.joints[ 'index-finger-tip' ].position;
@@ -111,21 +115,30 @@ let loop = (_: DOMHighResTimeStamp, frame: XRFrame) => {
 
       // }
     }
+  } else if (!xrSessionType.value) {
+    scene.children.forEach((object) => {
+      if (object.name === modelName) {
+        object.rotation.y += 0.01;
+      }
+    });
   }
 
-  scene.children.forEach((object) => {
-    if (object.name === modelName) {
-      object.rotation.y += 0.01;
-    }
-  });
   controls.update();
   renderer.render(scene, camera);
 };
 
-let resizeCallback = () => {
-  renderer.setSize(width, height);
 
-  camera.aspect = width / height;
+let resizeCallback = (_?: Event) => {
+
+
+  if (xrSessionType.value === "vr" && canvasRef.value) {
+    renderer.setSize(canvasRef.value.clientWidth, canvasRef.value.clientHeight, true);
+    camera.aspect = canvasRef.value.clientWidth / canvasRef.value.clientHeight; 
+  } else {
+    renderer.setSize(width, height);
+    camera.aspect = width / height; 
+  }
+
   camera.updateProjectionMatrix();
 };
 
@@ -171,6 +184,10 @@ onMounted(() => {
     loadedModel = gltf.scene.children[0];
 
     shownModel = loadedModel.clone();
+
+    // for rapier physics
+    shownModel.userData.physics = { mass: 1, restitution: 1.1 };
+
     shownModel.name = modelName;
     shownModel.scale.set(0.5, 0.5, 0.5);
     scene.add(shownModel);
@@ -185,6 +202,26 @@ onUnmounted(() => {
   renderer.setAnimationLoop(null);
   window.removeEventListener("resize", resizeCallback);
 });
+
+async function initPhysics() {
+
+  // https://rapier.rs/docs/api/javascript/JavaScript3D/
+  // https://rapier.rs/docs/user_guides/javascript/getting_started_js/
+
+  const physics = await RapierPhysics();
+
+  // userData.physics = mass, restitution
+  // also can set mesh velocity by physics.setMeshVelocity(mesh, velocity, index?)
+
+  const floor = new THREE.Mesh( new THREE.BoxGeometry( 6, 2, 6 ), new THREE.MeshNormalMaterial( { visible: false } ) );
+  floor.position.y = - 1;
+
+  floor.userData.physics = { mass: 0 };
+  scene.add( floor );
+
+
+  physics.addScene( scene );
+}
 
 
 async function startXr(sessionType: "ar" | "vr") {
@@ -253,11 +290,9 @@ async function initHitTestSources() {
 
 }
 
-// async function startXR() {
+// async function startMR() {
 //   // https://github.com/mrdoob/three.js/blob/master/examples/webxr_xr_ballshooter.html
 // }
-
-
 
 async function startVR() {
   if (!navigator.xr) return;
@@ -285,19 +320,28 @@ async function startVR() {
         "hand-tracking",
         "dom-overlay"
       ],
+      domOverlay: {
+        root: canvasRef.value ? canvasRef.value : document.body,
+      },
     });
   } catch (error) {
     console.log("err")
   }
 
+  // vrOverlayHTML
+
   if (!xrSession) return;
-  xrSessionType = "vr";
+  xrSessionType.value = "vr";
 
   // session.addEventListener( 'end', onSessionEnded );
 
-  //renderer.xr.setReferenceSpaceType("local");
+  await initVRControls();
+  // await initPhysics();
+
+  renderer.xr.setReferenceSpaceType("local-floor");
   await renderer.xr.setSession( xrSession );
-  await initVRControls()
+
+  resizeCallback();
   
 }
 
@@ -390,16 +434,65 @@ async function initVRControls() {
 
   controller1.add( line.clone() );
   controller2.add( line.clone() );
+
+
+  const room = new THREE.LineSegments(
+    new BoxLineGeometry( 6, 6, 6, 10, 10, 10 ),
+    new THREE.LineBasicMaterial( { color: 0x808080 } )
+  );
+  room.geometry.translate( 0, 3, 0 );
+  scene.add( room );
+
+  scene.background = new THREE.Color( 0x505050 );
   
 }
 
-function onSelectStartRight(event: THREE.WebXRSpaceEventMap['selectstart']) {
+function onSelectStartRight(_: THREE.WebXRSpaceEventMap['selectstart'],) {
 
-  if (event.data.gamepad) {
-    event.data.gamepad.hapticActuators[0].pulse(0.5, 100);
+  if (!controller1 || shownModelIsGrabbed) return;
+
+  const controller = controller1;
+  const modelWorldPosition = new THREE.Vector3();
+  shownModel.getWorldPosition(modelWorldPosition);
+
+  const distanceFromBottomCenterToControllerPosition = {
+    x: modelWorldPosition.x - controller.position.x,
+    y: modelWorldPosition.y - controller.position.y,
+    z: modelWorldPosition.z - controller.position.z,
+  };
+
+  let shownModelBbox = new THREE.Box3().setFromObject(shownModel);
+  let shownModelSize = new THREE.Vector3;
+  shownModelBbox.getSize(shownModelSize);
+  console.log(shownModelSize);
+
+  if (
+    Math.abs(distanceFromBottomCenterToControllerPosition.y) <=
+    shownModelSize.y &&
+    Math.abs(distanceFromBottomCenterToControllerPosition.x) <=
+    shownModelSize.x / 2 &&
+    Math.abs(distanceFromBottomCenterToControllerPosition.z) <=
+    shownModelSize.z / 2
+  ) {
+
+    console.log("Object grab");
+    // grabModel(model, controller);
+    grabModel();
+    shownModelIsGrabbed = true;
+    
   }
 
-  console.log(event.data.gamepad)
+  function grabModel(){
+    controller.attach(shownModel);
+    //controller remove ray
+  }
+
+
+  // if (event.data.gamepad) {
+  //   event.data.gamepad.hapticActuators[0].pulse(0.5, 100);
+  // }
+
+  // console.log(event.data.gamepad)
 
   // const controller = event.target;
   // const indexTip = controller.joints[ 'index-finger-tip' ];
@@ -420,6 +513,35 @@ function onSelectStartRight(event: THREE.WebXRSpaceEventMap['selectstart']) {
 }
 
 function onSelectEndtRight(  ) {
+
+  if (shownModelIsGrabbed) {
+    ungrabModel();
+  }
+
+  function ungrabModel() {
+    scene.attach(shownModel);
+    shownModelIsGrabbed = false;
+  }
+
+  // if ( controller.userData.isSelecting ) {
+
+  //   physics.setMeshPosition( spheres, controller.position, count );
+
+  //   velocity.x = ( Math.random() - 0.5 ) * 2;
+  //   velocity.y = ( Math.random() - 0.5 ) * 2;
+  //   velocity.z = ( Math.random() - 9 );
+  //   velocity.applyQuaternion( controller.quaternion );
+
+  //   physics.setMeshVelocity( spheres, velocity, count );
+
+  //   if ( ++ count === spheres.count ) count = 0;
+
+  // }
+
+
+
+
+
   // const controller = event.target;
 
   // if ( controller.userData.selected !== undefined ) {
@@ -453,7 +575,7 @@ async function startAR() {
   }
 
   if (!xrSession) return;
-  xrSessionType = "ar";
+  xrSessionType.value = "ar";
 
   renderer.xr.setReferenceSpaceType("local");
   await renderer.xr.setSession( xrSession );
@@ -482,6 +604,10 @@ async function startAR() {
   
 }
 
+watch(canvasRef, () => {
+  console.log("test")
+})
+
 </script>
 
 <template>
@@ -489,15 +615,25 @@ async function startAR() {
     <div class="overlay-content" ref="overlayContentRef">
       <h1>{{ modelName }}</h1>
     </div>
-    <canvas ref="canvasRef"></canvas>
+    <canvas ref="canvasRef" :class="{
+      'vrOverlay': xrSessionType === 'vr'
+    }"></canvas>
     <div class="xrButtons" ref="xrButtonsRef">
       <button @click="startXr('vr')">start vr</button>
       <button @click="startXr('ar')">start ar</button>
     </div>
   </div>
+
 </template>
 
 <style scoped>
+
+.vrOverlay {
+  position: absolute;
+  width: 100vw;
+  height: 100vh;
+}
+
 .xrButtons {
   width: auto;
   height: 30px;
